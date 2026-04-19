@@ -1,0 +1,16 @@
+{
+    "Credentials": [
+        {
+            "SSID": "MY_SSID1",
+            "Password": "MY_PASSWORD1"
+        },
+        {
+            "SSID": "MY_SSID2",
+            "Password": "MY_PASSWORD2"
+        },
+        {
+            "SSID": "MY_SSID3",
+            "Password": "MY_PASSWORD3"
+        }
+    ]
+}
