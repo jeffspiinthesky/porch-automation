@@ -119,9 +119,7 @@ for handler in [LaunchHandler, ControlDeviceHandler, HelpHandler,
 
 #skill_handler = WebserviceSkillHandler(skill=sb.create())
 skill_handler = WebserviceSkillHandler(
-    skill=sb.create(),
-    verify_signature=False,  # temporary debug only!
-    verify_timestamp=False
+    skill=sb.create()
 )
 
 @app.route("/alexa", methods=["POST"])
