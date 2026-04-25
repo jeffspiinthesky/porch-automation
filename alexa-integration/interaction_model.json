@@ -1,0 +1,97 @@
+{
+    "interactionModel": {
+        "languageModel": {
+            "invocationName": "porch controller",
+            "intents": [
+                {
+                    "name": "ControlDeviceIntent",
+                    "slots": [
+                        {
+                            "name": "action",
+                            "type": "ActionType"
+                        },
+                        {
+                            "name": "device",
+                            "type": "DeviceType"
+                        }
+                    ],
+                    "samples": [
+                        "turn the {device} {action}",
+                        "switch the {device} {action}",
+                        "turn {action} the {device}",
+                        "{action} the {device}",
+                        "turn the porch {device} {action}",
+                        "switch the porch {device} {action}"
+                    ]
+                },
+                {
+                    "name": "AMAZON.HelpIntent",
+                    "samples": []
+                },
+                {
+                    "name": "AMAZON.CancelIntent",
+                    "samples": []
+                },
+                {
+                    "name": "AMAZON.StopIntent",
+                    "samples": []
+                },
+                {
+                    "name": "AMAZON.NavigateHomeIntent",
+                    "samples": []
+                }
+            ],
+            "types": [
+                {
+                    "name": "ActionType",
+                    "values": [
+                        {
+                            "name": {
+                                "value": "on",
+                                "synonyms": [
+                                    "enable",
+                                    "start",
+                                    "activate"
+                                ]
+                            }
+                        },
+                        {
+                            "name": {
+                                "value": "off",
+                                "synonyms": [
+                                    "disable",
+                                    "stop",
+                                    "deactivate"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "DeviceType",
+                    "values": [
+                        {
+                            "name": {
+                                "value": "camera",
+                                "synonyms": [
+                                    "porch camera",
+                                    "porch cam",
+                                    "webcam"
+                                ]
+                            }
+                        },
+                        {
+                            "name": {
+                                "value": "light",
+                                "synonyms": [
+                                    "porch light",
+                                    "porch lamp"
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+}
