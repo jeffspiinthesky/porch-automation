@@ -273,6 +273,16 @@ This is the single HTTP endpoint Flask exposes. Every Alexa request arrives here
 
 NGINX sits in front of Flask and handles SSL termination. Alexa requires HTTPS on port 443 — Flask only speaks plain HTTP on port 5000. NGINX receives the encrypted HTTPS request, decrypts it, and forwards it as plain HTTP to Flask. This means Flask never has to deal with SSL certificates directly.
 
+#### Advanced config for Flask endpoint
+```
+proxy_set_header Host $host;
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header SignatureCertChainUrl $http_signaturecertchainurl;
+proxy_set_header Signature $http_signature;
+```
+
 ### Alexa Developer Console
 
 The skill is registered in the Alexa Developer Console with:
