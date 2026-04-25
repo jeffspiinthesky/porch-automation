@@ -293,3 +293,252 @@ The skill can be invoked in two ways:
 **Interactive session**:
 
 > _"Alexa, open porch controller"_ _"Turn the camera off"_
+
+# Porch Controller — Docker Build Guide
+
+## Overview
+
+This guide covers building the Alexa skill Flask server as a Docker container, including cross-building for an ARM64 target (e.g. a Raspberry Pi or ARM-based OpenMediaVault host) from an AMD64 development machine.
+
+---
+
+## Project Structure
+
+Your project directory should look like this before building:
+
+```
+porch-controller/
+├── alexa_skill.py
+├── requirements.txt
+├── Dockerfile
+└── compose.yaml
+```
+
+---
+
+## Step 1 — requirements.txt
+
+Create a `requirements.txt` listing all Python dependencies:
+
+```txt
+flask
+requests
+ask-sdk-core
+ask-sdk-webservice-support
+oscrypto
+```
+
+---
+
+## Step 2 — Dockerfile
+
+Create a `Dockerfile` in the project directory:
+
+```dockerfile
+FROM ubuntu:24.04
+
+RUN apt update
+RUN apt upgrade -y
+RUN apt install -y python3 python3-pip python3-venv libssl-dev
+
+WORKDIR /
+RUN python3 -m venv venv
+RUN /venv/bin/pip3 install requests
+RUN /venv/bin/pip3 install flask
+RUN /venv/bin/pip3 install ask_sdk_core
+RUN /venv/bin/pip3 install ask_sdk_webservice_support
+RUN ln -sf /usr/lib/aarch64-linux-gnu/libcrypto.so.3 /usr/lib/libcrypto.so.3
+RUN ln -sf /usr/lib/aarch64-linux-gnu/libssl.so.3 /usr/lib/libssl.so.3
+ADD patch.py /patch.py
+RUN /venv/bin/python3 /patch.py
+
+ADD alexa_skill.py /alexa_skill.py
+
+ENTRYPOINT ["/venv/bin/python3", "alexa_skill.py"]
+```
+---
+
+## Step 3 — compose.yaml
+
+```yaml
+services:
+  alexa-skill:
+    image: porch-controller:latest
+    ports:
+      - 61443:5000
+    restart: unless-stopped
+    environment:
+      - PICO_BASE_URL=http://192.168.1.42
+      - SKILL_ID=<insert your skill ID here>
+```
+
+Note the compose file references the image by name rather than using `build:` — this is because you will build the image separately on your AMD64 machine, transfer it to the PI host, and load it there. See the build steps below.
+
+---
+
+## Step 4 — Set Up Cross-Platform Building on your AMD64 Machine
+
+Docker uses **buildx** and **QEMU** to emulate ARM64 on an AMD64 machine. This lets you produce a native ARM64 image without needing the target hardware in front of you.
+
+### Install QEMU emulation support
+
+```bash
+docker run --privileged --rm tonistiigi/binfmt --install all
+```
+
+This registers QEMU binary format handlers with the Linux kernel, enabling your machine to execute ARM64 binaries transparently. The `--privileged` flag is required as it modifies kernel-level settings. You only need to run this once — it persists until the next reboot, though many systems restore it automatically via a systemd service.
+
+### Create a buildx builder
+
+Docker's default builder does not support multi-platform builds. Create a new one:
+
+```bash
+docker buildx create --name multiarch --driver docker-container --use
+docker buildx inspect --bootstrap
+```
+
+The `--bootstrap` flag starts the builder and confirms it is working. You should see `arm64` listed under supported platforms in the output.
+
+---
+
+## Step 5 — Build the ARM64 Image
+
+From your project directory on the AMD64 machine:
+
+```bash
+docker buildx build \
+  --platform linux/arm64 \
+  --tag porch-controller:latest \
+  --output type=docker \
+  .
+```
+
+Breaking down the flags:
+
+| Flag | Purpose |
+|------|---------|
+| `--platform linux/arm64` | Target ARM64 architecture |
+| `--tag porch-controller:latest` | Name and tag for the image |
+| `--output type=docker` | Load the image into the local Docker image store |
+| `.` | Build context — the current directory |
+
+Note that `--output type=docker` is required when building for a single non-native platform and wanting the result in the local image store. Without it, buildx builds but does not load the image anywhere accessible.
+
+The build will take longer than a native build as pip package installation runs under QEMU emulation.
+
+---
+
+## Step 6 — Export the Image
+
+Save the built image to a tar file for transfer to the PI host:
+
+```bash
+docker save porch-controller:latest | gzip > porch-controller.tar.gz
+```
+
+This produces a compressed archive of the image that can be copied to any machine with Docker installed.
+
+---
+
+## Step 7 — Transfer to the PI Host
+
+Copy the image and your compose file to the PI host using `scp`:
+
+```bash
+scp porch-controller.tar.gz user@your-pi-host:/opt/porch-controller/
+scp compose.yaml user@your-pi-host:/opt/porch-controller/
+```
+
+Replace `user` and `your-pi-host` with your PI credentials and hostname or IP address.
+
+---
+
+## Step 8 — Load and Start on the PI Host
+
+SSH into the PI host:
+
+```bash
+ssh user@your-pi-host
+```
+
+Navigate to the project directory and load the image:
+
+```bash
+cd /opt/porch-controller
+docker load < porch-controller.tar.gz
+```
+
+You should see output confirming the image was loaded:
+
+```
+Loaded image: porch-controller:latest
+```
+
+Start the container:
+
+```bash
+docker compose up -d
+```
+
+Confirm it is running:
+
+```bash
+docker compose ps
+docker compose logs -f
+```
+
+The logs should show Flask starting up on port 5000 with no errors.
+
+---
+
+## Updating the Container
+
+When you make changes to `alexa_skill.py`, repeat the build and transfer process:
+
+```bash
+# On your AMD64 machine
+docker buildx build --platform linux/arm64 --tag porch-controller:latest --output type=docker .
+docker save porch-controller:latest | gzip > porch-controller.tar.gz
+scp porch-controller.tar.gz user@your-pi-host:/opt/porch-controller/
+
+# On the PI host
+docker load < porch-controller.tar.gz
+docker compose up -d --force-recreate
+```
+
+The `--force-recreate` flag ensures the running container is replaced with the newly loaded image even though the tag name has not changed.
+
+---
+
+## Troubleshooting
+
+### oscrypto SSL path error on startup
+
+If the container logs show an error related to `oscrypto` or OpenSSL paths, the SSL library path in `alexa_skill.py` may not match the container's library location. Check the actual path inside the container:
+
+```bash
+docker run --rm --platform linux/arm64 porch-controller:latest \
+  find /usr -name "libcrypto.so*"
+```
+
+Update the path in `alexa_skill.py` to match and rebuild.
+
+### Container cannot reach the Pico
+
+If Flask logs show connection errors when trying to reach the Pico, verify:
+
+1. The `PICO_BASE_URL` environment variable has the correct IP
+2. The `SKILL_ID` environment variable has the skill ID of your skill in Alexa Developer Console
+3. The Pico is reachable from the PI host directly: `curl http://192.168.1.42/light`
+
+### QEMU build errors during pip install
+
+Occasionally pip installs fail under QEMU emulation due to timing issues. Simply re-run the build — these are transient errors and almost always succeed on a second attempt.
+
+### Checking the builder is set up correctly
+
+```bash
+docker buildx ls
+```
+
+You should see your `multiarch` builder marked as active with `linux/arm64` in its supported platforms list.
