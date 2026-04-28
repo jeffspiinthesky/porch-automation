@@ -1,0 +1,5 @@
+flask
+requests
+ask-sdk-core
+ask-sdk-webservice-support
+oscrypto
